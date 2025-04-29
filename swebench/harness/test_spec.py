@@ -105,17 +105,27 @@ class TestSpec:
             return "linux/x86_64"
         elif self.arch == "arm64":
             return "linux/arm64/v8"
+        elif self.arch == "amd64":
+            return "linux/amd64"
         else:
             raise ValueError(f"Invalid architecture: {self.arch}")
 
 
-def get_test_specs_from_dataset(dataset: Union[list[SWEbenchInstance], list[TestSpec]]) -> list[TestSpec]:
+def get_test_specs_from_dataset(dataset: Union[list[SWEbenchInstance], list[TestSpec]], target: str | None = None) -> list[TestSpec]:
     """
     Idempotent function that converts a list of SWEbenchInstance objects to a list of TestSpec objects.
     """
     if isinstance(dataset[0], TestSpec):
         return cast(list[TestSpec], dataset)
-    return list(map(make_test_spec, cast(list[SWEbenchInstance], dataset)))
+
+    results = []
+
+    for datum in dataset:
+        results.append(
+            make_test_spec(datum, target=target)
+        )    
+
+    return results
 
 
 def make_repo_script_list(specs, repo, repo_directory, base_commit, env_name):
@@ -282,7 +292,7 @@ def make_eval_script_list(instance, specs, env_name, repo_directory, base_commit
     return eval_commands
 
 
-def make_test_spec(instance: SWEbenchInstance) -> TestSpec:
+def make_test_spec(instance: SWEbenchInstance, target: str | None = None) -> TestSpec:
     if isinstance(instance, TestSpec):
         return instance
     instance_id = instance[KEY_INSTANCE_ID]
@@ -311,12 +321,16 @@ def make_test_spec(instance: SWEbenchInstance) -> TestSpec:
     eval_script_list = make_eval_script_list(
         instance, specs, env_name, repo_directory, base_commit, test_patch
     )
-    if platform.machine() in {"aarch64", "arm64"}:
-        # use arm64 unless explicitly specified
-        arch = "arm64" if instance_id not in USE_X86 else "x86_64"
-    else:
-        arch = "x86_64"
 
+    if target is None:
+        if platform.machine() in {"aarch64", "arm64"}:
+            # use arm64 unless explicitly specified
+            arch = "arm64" if instance_id not in USE_X86 else "x86_64"
+        else:
+            arch = "x86_64"
+    else:
+        arch = target.split('/')[-1]
+    
     return TestSpec(
         instance_id=instance_id,
         repo=repo,

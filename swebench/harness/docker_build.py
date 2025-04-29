@@ -161,7 +161,8 @@ def build_image(
 def build_base_images(
         client: docker.DockerClient,
         dataset: list,
-        force_rebuild: bool = False
+        force_rebuild: bool = False,
+        target: str | None = None,
     ):
     """
     Builds the base images required for the dataset if they do not already exist.
@@ -170,9 +171,10 @@ def build_base_images(
         client (docker.DockerClient): Docker client to use for building the images
         dataset (list): List of test specs or dataset to build images for
         force_rebuild (bool): Whether to force rebuild the images even if they already exist
+        target (str | None): force to build with a particular platform
     """
     # Get the base images to build from the dataset
-    test_specs = get_test_specs_from_dataset(dataset)
+    test_specs = get_test_specs_from_dataset(dataset, target=target)
     base_images = {
         x.base_image_key: (x.base_dockerfile, x.platform) for x in test_specs
     }
@@ -181,7 +183,7 @@ def build_base_images(
             remove_image(client, key, "quiet")
 
     # Build the base images
-    for image_name, (dockerfile, platform) in base_images.items():
+    for image_name, (dockerfile, i_platform) in base_images.items():
         try:
             # Check if the base image already exists
             client.images.get(image_name)
@@ -199,7 +201,7 @@ def build_base_images(
             image_name=image_name,
             setup_scripts={},
             dockerfile=dockerfile,
-            platform=platform,
+            platform=i_platform if target is None else target,
             client=client,
             build_dir=BASE_IMAGE_BUILD_DIR / image_name.replace(":", "__"),
         )
@@ -235,7 +237,6 @@ def get_env_configs_to_build(
                 f"Base image {test_spec.base_image_key} not found for {test_spec.env_image_key}\n."
                 "Please build the base images first."
             )
-
         # Check if the environment image exists
         image_exists = False
         try:
@@ -257,7 +258,8 @@ def build_env_images(
         client: docker.DockerClient,
         dataset: list,
         force_rebuild: bool = False,
-        max_workers: int = 4
+        max_workers: int = 4,
+        target: str | None = None,
     ):
     """
     Builds the environment images required for the dataset if they do not already exist.
@@ -267,13 +269,14 @@ def build_env_images(
         dataset (list): List of test specs or dataset to build images for
         force_rebuild (bool): Whether to force rebuild the images even if they already exist
         max_workers (int): Maximum number of workers to use for building images
+        platform (str | None): force to build with a particular platform
     """
     # Get the environment images to build from the dataset
     if force_rebuild:
         env_image_keys = {x.env_image_key for x in get_test_specs_from_dataset(dataset)}
         for key in env_image_keys:
             remove_image(client, key, "quiet")
-    build_base_images(client, dataset, force_rebuild)
+    build_base_images(client, dataset, force_rebuild, target=target)
     configs_to_build = get_env_configs_to_build(client, dataset)
     if len(configs_to_build) == 0:
         print("No environment images need to be built.")
@@ -293,7 +296,7 @@ def build_env_images(
                     image_name,
                     {"setup_env.sh": config["setup_script"]},
                     config["dockerfile"],
-                    config["platform"],
+                    config["platform"] if target is None else target,
                     client,
                     ENV_IMAGE_BUILD_DIR / image_name.replace(":", "__"),
                 ): image_name
