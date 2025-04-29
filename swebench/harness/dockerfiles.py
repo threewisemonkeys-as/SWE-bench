@@ -59,6 +59,8 @@ WORKDIR /testbed/
 def get_dockerfile_base(platform, arch, conda_version=None):
     if arch == "arm64":
         conda_arch = "aarch64"
+    elif arch == "amd64":
+        conda_arch = "x86_64"
     else:
         conda_arch = arch
     if conda_version == None:
